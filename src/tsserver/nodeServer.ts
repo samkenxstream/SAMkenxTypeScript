@@ -11,7 +11,6 @@ import {
     DirectoryWatcherCallback,
     FileWatcher,
     getDirectoryPath,
-    getNodeMajorVersion,
     getRootLength,
     JsTyping,
     LanguageServiceMode,
@@ -21,7 +20,6 @@ import {
     normalizePath,
     normalizeSlashes,
     perfLogger,
-    resolveJSModule,
     SortedReadonlyArray,
     startTracing,
     stripQuotes,
@@ -58,7 +56,6 @@ import {
     ITypingsInstaller,
     Logger,
     LogLevel,
-    ModuleImportResult,
     Msg,
     nowString,
     nullCancellationToken,
@@ -260,13 +257,13 @@ export function initializeNodeSystem(): StartInput {
         msg(s: string, type: Msg = Msg.Err) {
             switch (type) {
                 case Msg.Info:
-                    perfLogger.logInfoEvent(s);
+                    perfLogger?.logInfoEvent(s);
                     break;
                 case Msg.Perf:
-                    perfLogger.logPerfEvent(s);
+                    perfLogger?.logPerfEvent(s);
                     break;
                 default: // Msg.Err
-                    perfLogger.logErrEvent(s);
+                    perfLogger?.logErrEvent(s);
                     break;
             }
 
@@ -299,9 +296,7 @@ export function initializeNodeSystem(): StartInput {
 
     const libDirectory = getDirectoryPath(normalizePath(sys.getExecutingFilePath()));
 
-    const nodeVersion = getNodeMajorVersion();
-    // use watchGuard process on Windows when node version is 4 or later
-    const useWatchGuard = process.platform === "win32" && nodeVersion! >= 4;
+    const useWatchGuard = process.platform === "win32";
     const originalWatchDirectory: ServerHost["watchDirectory"] = sys.watchDirectory.bind(sys);
     const logger = createLogger();
 
@@ -383,15 +378,6 @@ export function initializeNodeSystem(): StartInput {
     if (typeof global !== "undefined" && global.gc) {
         sys.gc = () => global.gc?.();
     }
-
-    sys.require = (initialDir: string, moduleName: string): ModuleImportResult => {
-        try {
-            return { module: require(resolveJSModule(moduleName, initialDir, sys)), error: undefined };
-        }
-        catch (error) {
-            return { module: undefined, error };
-        }
-    };
 
     let cancellationToken: ServerCancellationToken;
     try {
