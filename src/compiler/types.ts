@@ -1219,6 +1219,7 @@ export type HasJSDoc =
     | PropertyDeclaration
     | PropertySignature
     | ReturnStatement
+    | SemicolonClassElement
     | ShorthandPropertyAssignment
     | SpreadAssignment
     | SwitchStatement
@@ -1721,11 +1722,9 @@ export type PropertyName = Identifier | StringLiteral | NumericLiteral | Compute
 export type MemberName = Identifier | PrivateIdentifier;
 
 export type DeclarationName =
-    | Identifier
-    | PrivateIdentifier
+    | PropertyName
+    | JsxAttributeName
     | StringLiteralLike
-    | NumericLiteral
-    | ComputedPropertyName
     | ElementAccessExpression
     | BindingPattern
     | EntityNameExpression;
@@ -2101,7 +2100,7 @@ export interface ConstructorDeclaration extends FunctionLikeDeclarationBase, Cla
 }
 
 /** For when we encounter a semicolon in a class declaration. ES6 allows these as class elements. */
-export interface SemicolonClassElement extends ClassElement {
+export interface SemicolonClassElement extends ClassElement, JSDocContainer {
     readonly kind: SyntaxKind.SemicolonClassElement;
     readonly parent: ClassLikeDeclaration;
 }
@@ -2331,7 +2330,7 @@ export interface LiteralTypeNode extends TypeNode {
 
 export interface StringLiteral extends LiteralExpression, Declaration {
     readonly kind: SyntaxKind.StringLiteral;
-    /** @internal */ readonly textSourceNode?: Identifier | StringLiteralLike | NumericLiteral | PrivateIdentifier; // Allows a StringLiteral to get its text from another node (used by transforms).
+    /** @internal */ readonly textSourceNode?: Identifier | StringLiteralLike | NumericLiteral | PrivateIdentifier | JsxNamespacedName; // Allows a StringLiteral to get its text from another node (used by transforms).
     /**
      * Note: this is only set when synthesizing a node, not during parsing.
      *
@@ -2341,7 +2340,7 @@ export interface StringLiteral extends LiteralExpression, Declaration {
 }
 
 export type StringLiteralLike = StringLiteral | NoSubstitutionTemplateLiteral;
-export type PropertyNameLiteral = Identifier | StringLiteralLike | NumericLiteral;
+export type PropertyNameLiteral = Identifier | StringLiteralLike | NumericLiteral | JsxNamespacedName;
 
 export interface TemplateLiteralTypeNode extends TypeNode {
     kind: SyntaxKind.TemplateLiteralType,
@@ -3190,7 +3189,7 @@ export type JsxTagNameExpression =
     ;
 
 export interface JsxTagNamePropertyAccess extends PropertyAccessExpression {
-    readonly expression: JsxTagNameExpression;
+    readonly expression: Identifier | ThisExpression | JsxTagNamePropertyAccess;
 }
 
 export interface JsxAttributes extends PrimaryExpression, Declaration {
@@ -3199,7 +3198,7 @@ export interface JsxAttributes extends PrimaryExpression, Declaration {
     readonly parent: JsxOpeningLikeElement;
 }
 
-export interface JsxNamespacedName extends PrimaryExpression {
+export interface JsxNamespacedName extends Node {
     readonly kind: SyntaxKind.JsxNamespacedName;
     readonly name: Identifier;
     readonly namespace: Identifier;
@@ -4816,6 +4815,7 @@ export interface Program extends ScriptReferenceHost {
      * @internal
      */
     resolvedLibReferences: Map<string, LibResolution> | undefined;
+    /** @internal */ getCurrentPackagesMap(): Map<string, boolean> | undefined;
     /**
      * Is the file emitted file
      *
@@ -4951,6 +4951,9 @@ export interface TypeCheckerHost extends ModuleSpecifierResolutionHost {
     isSourceOfProjectReferenceRedirect(fileName: string): boolean;
 
     readonly redirectTargetsMap: RedirectTargetsMap;
+
+    typesPackageExists(packageName: string): boolean;
+    packageBundlesTypes(packageName: string): boolean;
 }
 
 export interface TypeChecker {
@@ -6057,6 +6060,7 @@ export interface NodeLinks {
     spreadIndices?: { first: number | undefined, last: number | undefined }; // Indices of first and last spread elements in array literal
     parameterInitializerContainsUndefined?: boolean; // True if this is a parameter declaration whose type annotation contains "undefined".
     fakeScopeForSignatureDeclaration?: boolean; // True if this is a fake scope injected into an enclosing declaration chain.
+    assertionExpressionType?: Type;     // Cached type of the expression of a type assertion
 }
 
 /** @internal */
@@ -6924,6 +6928,16 @@ export interface DiagnosticMessage {
     elidedInCompatabilityPyramid?: boolean;
 }
 
+/** @internal */
+export interface RepopulateModuleNotFoundDiagnosticChain {
+    moduleReference: string;
+    mode: ResolutionMode;
+    packageName: string | undefined;
+}
+
+/** @internal */
+export type RepopulateDiagnosticChainInfo = RepopulateModuleNotFoundDiagnosticChain;
+
 /**
  * A linked list of formatted diagnostic messages to be used as part of a multiline message.
  * It is built from the bottom up, leaving the head to be the "main" diagnostic.
@@ -6935,6 +6949,8 @@ export interface DiagnosticMessageChain {
     category: DiagnosticCategory;
     code: number;
     next?: DiagnosticMessageChain[];
+    /** @internal */
+    repopulateInfo?: () => RepopulateDiagnosticChainInfo;
 }
 
 export interface Diagnostic extends DiagnosticRelatedInformation {
